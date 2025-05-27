@@ -2,10 +2,33 @@ import bcrypt from 'bcrypt';
 import postgres from 'postgres';
 import { invoices, customers, revenue, users } from '../lib/placeholder-data';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+export async function GET() {
+  // Create a single connection to use throughout the request
+  const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+  
+  try {
+    // Create the extension once
+    await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+    
+    // Create tables and seed data
+    await createAndSeedUsers(sql);
+    await createAndSeedCustomers(sql);
+    await createAndSeedInvoices(sql);
+    await createAndSeedRevenue(sql);
+    
+    // Close the connection when done
+    await sql.end();
+    
+    return Response.json({ message: 'Database seeded successfully' });
+  } catch (error) {
+    console.error('Error seeding database:', error);
+    // Make sure to close the connection even if there's an error
+    await sql.end().catch(console.error);
+    return Response.json({ error }, { status: 500 });
+  }
+}
 
-async function seedUsers() {
-  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
+async function createAndSeedUsers(sql: postgres.Sql<{}>) {
   await sql`
     CREATE TABLE IF NOT EXISTS users (
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -29,9 +52,7 @@ async function seedUsers() {
   return insertedUsers;
 }
 
-async function seedInvoices() {
-  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
-
+async function createAndSeedInvoices(sql: postgres.Sql<{}>) {
   await sql`
     CREATE TABLE IF NOT EXISTS invoices (
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -55,9 +76,7 @@ async function seedInvoices() {
   return insertedInvoices;
 }
 
-async function seedCustomers() {
-  await sql`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`;
-
+async function createAndSeedCustomers(sql: postgres.Sql<{}>) {
   await sql`
     CREATE TABLE IF NOT EXISTS customers (
       id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -80,7 +99,7 @@ async function seedCustomers() {
   return insertedCustomers;
 }
 
-async function seedRevenue() {
+async function createAndSeedRevenue(sql: postgres.Sql<{}>) {
   await sql`
     CREATE TABLE IF NOT EXISTS revenue (
       month VARCHAR(4) NOT NULL UNIQUE,
@@ -99,19 +118,4 @@ async function seedRevenue() {
   );
 
   return insertedRevenue;
-}
-
-export async function GET() {
-  try {
-    const result = await sql.begin((sql) => [
-      seedUsers(),
-      seedCustomers(),
-      seedInvoices(),
-      seedRevenue(),
-    ]);
-
-    return Response.json({ message: 'Database seeded successfully' });
-  } catch (error) {
-    return Response.json({ error }, { status: 500 });
-  }
 }
